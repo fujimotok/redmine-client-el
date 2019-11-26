@@ -34,6 +34,51 @@
     (decode-coding-string response-string
                           (coding-system-from-name coding-system-string))))
 
+;; (redmine-client-get-time 0 5 '((from . "2019-11-20") (to . "2019-11-22")))
+
+(defun redmine-client-get-time (&optional offset limit filter)
+  "Get time entries"
+  (interactive)
+  (let ((issue-alist nil)
+        (buffer (get-buffer-create "*issues*")))
+    (setq offset (or offset 0))
+    (setq limit  (or limit 25))
+    (setq issues-alist
+          (json-read-from-string
+           (url-http-get (format "%s/time_entries.json"
+                                 redmine-client-redmine-url)
+                         (list (cons "offset" offset)
+                               (cons "limit"  limit)))))
+    (setq redmine-client-issues-offset (cdr (assoc 'offset issues-alist)))
+    (setq redmine-client-issues-limit  (cdr (assoc 'limit  issues-alist)))
+    (setq redmine-client-issues-total  (cdr (assoc 'total_count issues-alist)))
+    (set-buffer buffer)
+    (read-only-mode -1)
+    (erase-buffer)
+    (insert (format "host:  %s\n" redmine-client-redmine-url))
+    (insert (format "count: %d\n\n" redmine-client-issues-total))
+    (insert (format "#id %-50s assigned_to\n" "subject"))
+    (insert "---------------------------------------------------------------------\n")
+    (mapcar (lambda (x)
+              (insert (format "#%d %s %s %-50s\n"
+                              ;; (cdr (assoc 'id x))
+                              (cdr (assoc 'id (cdr (assoc 'issue x))))
+                              (cdr (assoc 'spent_on x))
+                              (cdr (assoc 'hours x))
+                              (truncate-string-to-width (cdr (assoc 'comments x)) 50)
+                              ;; (or (cdr (assoc 'name (assoc 'assigned_to x))) "-")
+                              )))
+            (cdr (assoc 'time_entries issues-alist)))
+    ;; (insert (format "\n     < back     %d / %d page [%d items]     forward >"
+    ;;                 (ceiling (1+ redmine-client-issues-offset) redmine-client-issues-limit)
+    ;;                 (ceiling redmine-client-issues-total redmine-client-issues-limit)
+    ;;                 redmine-client-issues-limit))
+    ;; (redmine-client-issues-buttonize)
+    (read-only-mode 1)
+    ;;(use-local-map redmine-client-mode-map)
+    (pop-to-buffer buffer))
+  )
+
 (defun redmine-client-get-issues (&optional offset limit filter)
   "Get issues"
   (interactive)
