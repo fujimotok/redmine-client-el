@@ -34,7 +34,7 @@
     (decode-coding-string response-string
                           (coding-system-from-name coding-system-string))))
 
-;; (redmine-client-get-time 0 5 '((from . "2019-11-20") (to . "2019-11-22")))
+;; (redmine-client-get-time 0 5 '((from . "2019-11-20") (to . "2019-11-22") (user_id . 3)))
 
 (defun redmine-client-get-time (&optional offset limit filter)
   "Get time entries"
