@@ -1,0 +1,260 @@
+Const SheetParams As String = "Params"
+Const SheetProjects As String = "Projects"
+Const SheetTrackers As String = "Trackers"
+Const SheetUsers As String = "Users"
+Const SheetIssues As String = "Issues"
+
+'-------------------------------------------------------------------------------
+' プロジェクトの取得を実行
+'-------------------------------------------------------------------------------
+Sub ExecuteGetProjects ()
+   Dim url As String
+   Dim key As String
+   
+   Call GetURLandAPIKey(url, key)
+   Call GetProjects(url, key)
+End Sub
+
+'-------------------------------------------------------------------------------
+' トラッカーの取得を実行
+'-------------------------------------------------------------------------------
+Sub ExecuteGetTrackers ()
+   Dim url As String
+   Dim key As String
+
+   Call GetURLandAPIKey(url, key)
+   Call GetTrackers(url, key)
+End Sub
+
+'-------------------------------------------------------------------------------
+' トラッカーの取得を実行
+'-------------------------------------------------------------------------------
+Sub ExecuteCreateIssues ()
+   Dim url As String
+   Dim key As String
+
+   Call GetURLandAPIKey(url, key)
+   Call CreateIssues(url, key)
+End Sub
+
+'-------------------------------------------------------------------------------
+' ParamsシートにあるURLとAPIKeyを取得
+'-------------------------------------------------------------------------------
+Public Function GetURLandAPIKey (ByRef url As String, ByVal key As String)
+   url = Worksheets(SheetParams).Range("B1").Value
+   key = Worksheets(SheetParams).Range("B2").Value
+End Function
+
+'-------------------------------------------------------------------------------
+' プロジェクトのIDと名前をProjectsシートに出力
+'-------------------------------------------------------------------------------
+Public Function GetProjects (ByVal url As String, ByVal key As String)
+   Dim row As Long
+   Dim total_count As Long
+   Dim limit As Long
+   Dim page As Long
+   Dim xmlHttp As New MSXML2.XMLHTTP60
+   Dim doc As New DOMDocument60
+   
+   With xmlHttp
+      'total_countを取得してループ回数決める
+      .Open "GET", url & "projects.xml?limit=1", False
+      .setRequestHeader "Content-Type", "text/xml"
+      .setRequestHeader "X-Redmine-API-Key", key
+      .send
+      If .Status = 200 Then
+         'XMLデータを取り込む
+         doc.LoadXML (.responseText)
+         total_count = doc.SelectSingleNode("projects/@total_count").Text
+      Else
+         MsgBox .responseText
+         GoTo Finally
+      End If
+
+      row = 4 ' 4行目からデータ入力スタート
+      limit = 100
+      For page = 0 To (total_count / limit + 1)
+         .Open "GET", url & "projects.xml?limit=100&offset=" & (limit * page), False
+         .setRequestHeader "Content-Type", "text/xml"
+         .setRequestHeader "X-Redmine-API-Key", key
+         .send
+         If .Status = 200 Then
+            'XMLデータを取り込む
+            doc.LoadXML (.responseText)
+            Dim node As IXMLDOMNode
+            For Each node In doc.SelectSingleNode("projects").ChildNodes
+               Worksheets(SheetProjects).Cells(row, 1).Value = node.SelectSingleNode("id").Text
+               Worksheets(SheetProjects).Cells(row, 2).Value = node.SelectSingleNode("name").Text
+               row = row + 1
+            Next
+         Else
+            MsgBox .responseText
+            GoTo Finally
+         End If
+      Next
+   End With
+
+Finally:
+   Set xmlHttp = Nothing
+   Set doc = Nothing
+End Function
+
+'-------------------------------------------------------------------------------
+' トラッカーのIDと名前をTrackersシートに出力
+'-------------------------------------------------------------------------------
+Public Function GetTrackers (ByVal url As String, ByVal key As String)
+   Dim row As Long
+   Dim total_count As Long
+   Dim xmlHttp As New MSXML2.XMLHTTP60
+   Dim doc As New DOMDocument60
+
+   'trackersにはページネーションがない？
+   With xmlHttp
+      row = 4 ' 4行目からデータ入力スタート
+      .Open "GET", url & "trackers.xml", False
+      .setRequestHeader "Content-Type", "text/xml"
+      .setRequestHeader "X-Redmine-API-Key", key
+      .send
+      If .Status = 200 Then
+         'XMLデータを取り込む
+         doc.LoadXML (.responseText)
+         Dim node As IXMLDOMNode
+         For Each node In doc.SelectSingleNode("trackers").ChildNodes
+            Worksheets(SheetTrackers).Cells(row, 1).Value = node.SelectSingleNode("id").Text
+            Worksheets(SheetTrackers).Cells(row, 2).Value = node.SelectSingleNode("name").Text
+            row = row + 1
+         Next
+      Else
+         MsgBox .responseText
+         GoTo Finally
+      End If
+   End With
+
+Finally:
+   Set xmlHttp = Nothing
+   Set doc = Nothing
+End Function
+
+'-------------------------------------------------------------------------------
+' チケットの登録
+'-------------------------------------------------------------------------------
+Function CreateIssues (ByVal url As String, ByVal key As String)
+   Dim row As Long
+   Dim issue_id As String
+   Dim tracker_id As String
+   Dim estimated_hours As String
+   Dim subject As String
+   Dim description As String
+   Dim project_id As String
+   Dim fixed_version_id As String
+   Dim watcher_user_ids As String
+
+   row = 4
+   Do
+      issue_id         = Worksheets(SheetIssues).Cells(row, 1).Value
+      tracker_id       = Worksheets(SheetIssues).Cells(row, 2).Value
+      estimated_hours  = Worksheets(SheetIssues).Cells(row, 3).Value
+      subject          = Worksheets(SheetIssues).Cells(row, 4).Value
+      description      = Worksheets(SheetIssues).Cells(row, 5).Value
+      project_id       = Worksheets(SheetIssues).Cells(row, 6).Value
+      fixed_version_id = Worksheets(SheetIssues).Cells(row, 7).Value
+      watcher_user_ids = Worksheets(SheetIssues).Cells(row, 8).Value
+
+      If subject = "" Then
+         Exit Do
+      End If
+
+      If issue_id = "" Then
+         issue_id = CreateIssue(url, key, tracker_id, estimated_hours, subject, description, project_id, fixed_version_id, watcher_user_ids)
+         Worksheets(SheetIssues).Cells(row, 1).Value = issue_id
+      End If
+
+      row = row + 1
+   Loop
+End Function
+
+'-------------------------------------------------------------------------------
+' チケットの登録
+'-------------------------------------------------------------------------------
+Public Function CreateIssue( _
+                            ByVal url As String, _
+                            ByVal key As String, _
+                            ByVal tracker_id As String, _
+                            ByVal estimated_hours As String, _
+                            ByVal subject As String, _
+                            ByVal description As String, _
+                            ByVal project_id As String, _
+                            ByVal fixed_version_id As String, _
+                            ByVal watcher_user_ids As String ) As String
+    CreateIssue = ""
+
+    Dim xmlDoc   As New MSXML2.DOMDocument60
+    Dim xmlPI    As IXMLDOMProcessingInstruction 
+    Dim rootNode As IXMLDOMNode
+    
+    'XML宣言(文字コードにはUTF-8を指定)
+    Set xmlPI = xmlDoc.appendChild(xmlDoc.createProcessingInstruction("xml", "version=""1.0"" encoding=""UTF-8"""))
+    
+    Set rootNode = xmlDoc.appendChild(xmlDoc.createNode(NODE_ELEMENT, "issue", ""))
+
+    If Len(Trim(project_id)) > 0 Then
+       rootNode.appendChild(xmlDoc.createNode(NODE_ELEMENT, "project_id", "")).Text = project_id
+    End If
+    If Len(Trim(tracker_id)) > 0 Then
+       rootNode.appendChild(xmlDoc.createNode(NODE_ELEMENT, "tracker_id", "")).Text = tracker_id
+    End If
+    If Len(Trim(estimated_hours)) > 0 Then
+       rootNode.appendChild(xmlDoc.createNode(NODE_ELEMENT, "estimated_hours", "")).Text = estimated_hours
+    End If
+    If Len(Trim(subject)) > 0 Then
+       rootNode.appendChild(xmlDoc.createNode(NODE_ELEMENT, "subject", "")).Text = subject
+    End If
+    If Len(Trim(description)) > 0 Then
+       rootNode.appendChild(xmlDoc.createNode(NODE_ELEMENT, "description", "")).Text = description
+    End If
+    If Len(Trim(fixed_version_id)) > 0 Then
+       rootNode.appendChild(xmlDoc.createNode(NODE_ELEMENT, "fixed_version_id", "")).Text = fixed_version_id
+    End If
+    If Len(Trim(watcher_user_ids)) > 0 Then
+       Dim node As IXMLDOMNode
+       Set node = rootNode.appendChild(xmlDoc.createNode(NODE_ELEMENT, "watcher_user_ids", ""))
+       node.Attributes.setNamedItem(xmlDoc.createNode(NODE_ATTRIBUTE, "type", "")).NodeValue = "Array"
+
+       Dim watchers
+       watchers = Split(RemoveSpace(watcher_user_ids), ",")
+       For Each watcher_user_id In watchers
+          node.appendChild(xmlDoc.createNode(NODE_ELEMENT, "watcher_user_id", "")).Text = watcher_user_id
+       Next
+    End If
+
+    Debug.Print xmlDoc.XML
+
+    Dim xmlHttp As New MSXML2.XMLHTTP60
+    With xmlHttp
+        .Open "POST", url & "issues.xml", False
+        .setRequestHeader "Content-Type", "text/xml"
+        .setRequestHeader "X-Redmine-API-Key", key
+        .send xmlDoc.XML
+
+        If .Status = 201 Then
+            'XMLデータを取り込む
+            Dim doc As DOMDocument60
+            Set doc = New DOMDocument60
+            doc.LoadXML (.responseText)
+            CreateIssue = doc.SelectSingleNode("issue/id").Text
+        Else
+            MsgBox .responseText
+        End If
+
+    End With
+    Set xmlHttp = Nothing
+End Function
+
+'-------------------------------------------------------------------------------
+' 空白の削除
+'-------------------------------------------------------------------------------
+Function RemoveSpace (ByRef s As String) As String
+   s = Replace(s, " ", "")
+   s = Replace(s, "　", "")
+   RemoveSpace = s
+End Function
